@@ -114,6 +114,16 @@
         "always"
       ]
     },
+    "coldHandoff": {
+      "type": "string",
+      "title": "Handoff when cold",
+      "description": "auto: once the prompt cache runs out on a chat big enough for the cold band, effortless hands off on its own: Haiku writes a Quick handoff, the chat clears, and the new chat says where things stand and waits. off: the cold band only offers it.",
+      "default": "off",
+      "options": [
+        "off",
+        "auto"
+      ]
+    },
     "compactWith": {
       "type": "string",
       "title": "Compact with",

@@ -614,6 +614,9 @@ export type JudgeConfig = {
   compactWith: 'haiku' | 'session'
   /** advised: the footer slot is Compact until Haiku advises a handoff. always: it is always the Handoff button. */
   handoffButton: 'advised' | 'always'
+  /** auto: once the cache runs out on a chat big enough for the cold band, hand off on its own (Quick, then the new
+   *  chat says where things stand and waits). off: the cold band only offers it. */
+  coldHandoff: 'off' | 'auto'
   /** A prompt the judge calls simple runs on a cheaper model than the chat's (never a dearer one). */
   modelAuto: 'on' | 'off'
   /** on: every subagent the chat sends off gets an effort picked by the judge before it starts. */
@@ -647,6 +650,7 @@ let config: JudgeConfig = {
   layout: 'default',
   compactWith: 'haiku',
   handoffButton: 'advised',
+  coldHandoff: 'off',
   modelAuto: 'off',
   helpers: 'off',
   theme: 'violet',
@@ -670,6 +674,7 @@ export function readConfig(options: unknown): JudgeConfig {
     layout: str(o.layout) === 'minimal' ? 'minimal' : 'default',
     compactWith: str(o.compactWith) === 'session' ? 'session' : 'haiku',
     handoffButton: str(o.handoffButton) === 'always' ? 'always' : 'advised',
+    coldHandoff: str(o.coldHandoff) === 'auto' ? 'auto' : 'off',
     // Off unless switched on: one prompt on another model rewrites the whole chat into that model's cache, which costs
     // more than it saves in a chat that is in use (measured 2026-10-10).
     modelAuto: str(o.modelAuto) === 'on' ? 'on' : 'off',
@@ -1465,6 +1470,16 @@ async function showCache($: EngineInterface) {
   await update($, cacheLeft, () => minutes)
   // Going cold or warm adds or removes the band above the prompt; the desktop app redraws that site only when asked.
   if ((minutes === 0) !== (was === 0)) $.ui.invalidate('ui.render')
+  if (minutes === 0 && was !== null && was > 0) await handoffWhenCold($)
+}
+
+/** Auto handoff on cold: the cache has just run out on a chat big enough for the cold band, with no turn running. Quick
+ * is written by Haiku from the transcript (the cache is cold), and the new chat waits: nobody may be at the keyboard. */
+async function handoffWhenCold($: EngineInterface) {
+  if (config.coldHandoff !== 'auto' || turnBusy()) return
+  const tokens = lastContext?.tokens
+  if (tokens === undefined || tokens < COLD_MIN_TOKENS) return
+  await startHandoff($, false, 'confirm')
 }
 
 /** Minutes left, rounded up, so "1" means under a minute and 0 means cold. */
@@ -1803,6 +1818,7 @@ const SETTING_FIELDS = {
   layout: 'layout',
   compactWith: 'compactWith',
   handoffButton: 'handoffButton',
+  coldHandoff: 'coldHandoff',
   modelAuto: 'modelAuto',
   helpers: 'helpers',
   theme: 'theme',
@@ -1834,6 +1850,7 @@ async function saveSetting($: EngineInterface, field: keyof typeof SETTING_FIELD
     layout: config.layout,
     compactWith: config.compactWith,
     handoffButton: config.handoffButton,
+    coldHandoff: config.coldHandoff,
     modelAuto: config.modelAuto,
     helpers: config.helpers,
     theme: config.theme,

@@ -853,6 +853,87 @@ describe('cache countdown', () => {
     return band
   }
 
+  /** A big chat whose 1-hour cache runs out with nobody typing: what Auto handoff clears, asks and sends. */
+  const goesCold = async ($: Engine, on: On, tokens = 500_000, ended = true) => {
+    // engine() without its prompt.submit: this one records what is sent.
+    mock.store(on)
+    mock.env(on, { EFFORTLESS_MODEL_UI: '1' })
+    on('ui.status', () => ({ value: undefined }))
+    on('session.messages', () => ({ value: [{ role: 'user', text: 'build the thing' }, { role: 'assistant', text: 'built it' }] }) as never)
+    on('session.model', () => ({ value: 'claude-opus-5-5' }))
+    on('command.list', () => ({ value: [{ name: 'model' }, { name: 'effort' }] as never }))
+    on('session.usage', () => ({ value: { context: { tokens, window: 1_000_000, percent: 50 } } }) as never)
+    const mocked = mock.clock(on)
+    answer(on, { ephemeral_1h_input_tokens: 500, ephemeral_5m_input_tokens: 0 })
+    const ran: string[] = []
+    on('command.run', (_$, e) => {
+      ran.push(e.command)
+      return { text: 'ok' }
+    })
+    const asked: string[] = []
+    on('model.complete', (_$, e) => {
+      asked.push(String(e.model))
+      return { value: { isAnswered: true as const, text: `Goal: from Haiku. ${'x'.repeat(120)}`, usage: USAGE } }
+    })
+    const forked: string[] = []
+    on('model.fork', (_$, e) => {
+      forked.push(e.prompt)
+      return { value: { isAnswered: true, text: 'Goal: forked.', usage: USAGE } } as never
+    })
+    const submitted: string[] = []
+    on('prompt.submit', (_$, e) => {
+      submitted.push(e.text)
+      return { text: e.text }
+    })
+    on('turn.complete', (_$, e) => ({ text: e.answer }))
+    await start($, on)
+    await step($)
+    if (ended) await $.turn.complete({ turnId: 't1', answer: 'built it', durationMs: 1, isAborted: false, reason: 'answer' } as never)
+    await mocked.advance(59 * 60_000)
+    const warm = { ran: [...ran], submitted: [...submitted] }
+    await mocked.advance(2 * 60_000)
+    await mocked.advance(5000)
+    return { warm, ran, asked, forked, submitted }
+  }
+
+  test('Auto handoff on cold: once the cache runs out, Haiku writes it, the chat clears and the new one waits', { options: { coldHandoff: 'auto' } } as never, async ($, on) => {
+    const { warm, ran, asked, forked, submitted } = await goesCold($, on)
+    expect(warm.ran).not.toContain('clear')
+    expect(warm.submitted).toEqual([])
+    // Cold: the fork would reread the chat at full price, so Haiku writes it from the transcript.
+    expect(forked).toEqual([])
+    expect(asked.some(m => m.includes('haiku'))).toBe(true)
+    expect(ran.filter(c => c === 'clear')).toHaveLength(1)
+    const sent = submitted.find(t => t.includes('Goal: from Haiku'))
+    expect(sent).toBeDefined()
+    // Nobody is at the keyboard: the new chat says where things stand and waits, it does not carry on alone.
+    expect(sent).toContain(handoffMessage('Goal: from Haiku.', 'confirm').split('\n').pop()!)
+  })
+
+  test('Auto handoff on cold is off unless switched on', async ($, on) => {
+    const { ran, submitted } = await goesCold($, on)
+    expect(ran).not.toContain('clear')
+    expect(submitted).toEqual([])
+  })
+
+  test('Auto handoff on cold leaves a chat too small for the cold band alone', { options: { coldHandoff: 'auto' } } as never, async ($, on) => {
+    const { ran, submitted } = await goesCold($, on, 100_000)
+    expect(ran).not.toContain('clear')
+    expect(submitted).toEqual([])
+  })
+
+  test('Auto handoff on cold waits out a turn that is still running', { options: { coldHandoff: 'auto' } } as never, async ($, on) => {
+    const { ran, submitted } = await goesCold($, on, 500_000, false)
+    expect(ran).not.toContain('clear')
+    expect(submitted).toEqual([])
+  })
+
+  test('readConfig: coldHandoff is off unless set to auto', () => {
+    expect(readConfig({}).coldHandoff).toBe('off')
+    expect(readConfig({ coldHandoff: 'auto' }).coldHandoff).toBe('auto')
+    expect(readConfig({ coldHandoff: 'yes' }).coldHandoff).toBe('off')
+  })
+
   test('Compact appears only once the cache is cold, and a click compacts', async ($, on) => {
     engine(on)
     on('session.usage', () => ({ value: { context: { tokens: 500_000, window: 1_000_000, percent: 50 } } }) as never)
@@ -1151,6 +1232,7 @@ describe('judge choice (plugin settings)', () => {
       layout: 'default',
       compactWith: 'haiku',
       handoffButton: 'advised',
+      coldHandoff: 'off',
       modelAuto: 'off',
       helpers: 'off',
       theme: 'violet',
