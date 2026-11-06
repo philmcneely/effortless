@@ -3596,11 +3596,11 @@ async function effortRows($: EngineInterface, e: RenderInput<'AbovePrompt'>, opt
         <Box flexShrink={0}>
           <Text dimColor>Effort</Text>
         </Box>
-        {EFFORTS.map(level =>
+        {EFFORTS.map((level, i) =>
           level === effortNow ? (
-            <Button key={`e-${level}`} variant="primary" label={level} onPress={setEffort(level)} />
+            <Button key={`e-${level}`} hotkey={String(i + 1)} variant="primary" label={level} onPress={setEffort(level)} />
           ) : (
-            <Button key={`e-${level}`} plain dimColor label={level} onPress={setEffort(level)} />
+            <Button key={`e-${level}`} hotkey={String(i + 1)} plain dimColor label={level} onPress={setEffort(level)} />
           ),
         )}
         <Box flexGrow={1} />
@@ -4028,8 +4028,18 @@ model used: ${lastRequest ? `${lastRequest.model} at ${lastRequest.effort ?? 'no
       }
     }
     if (arg === 'settings') {
+      // Toggle: a keyboard-only way in AND out, so the panel is never a trap on a
+      // surface where the mouse can't reach its ✕ (clicks don't land in every terminal).
+      if (await read($, settingsOpen)) {
+        await update($, settingsDraft, () => ({}))
+        await update($, judgeTest, () => null)
+        await update($, settingsCard, () => null)
+        await update($, settingsOpen, () => false)
+        $.ui.invalidate('ui.render')
+        return { text: 'Closed the effortless settings.' }
+      }
       await openPluginSettings($)
-      return { text: 'The effortless settings are open above the prompt.' }
+      return { text: 'The effortless settings are open above the prompt. Run /effortless settings again to close.' }
     }
     if (arg === 'setup') {
       await update($, setupStep, () => 'pick')
