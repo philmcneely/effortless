@@ -1226,6 +1226,10 @@ async function toggleSave($: EngineInterface): Promise<string> {
 /** Below this a cold cache costs too little to warn about: the next message rereads the chat at full price once. */
 const COLD_MIN_TOKENS = 400_000
 
+/** Auto handoff on cold starts lower than the band: a Quick handoff costs one Haiku read, far less than rereading a
+ * mid-size chat at full price, and nobody has to act on it. */
+const COLD_HANDOFF_MIN_TOKENS = 150_000
+
 /** The context's tokens when the cold band is worth showing: the cache is cold, the band not closed, and the chat big
  * enough that rereading it matters. Null otherwise, and while the size is not known yet. */
 async function coldWorth($: EngineInterface): Promise<number | null> {
@@ -1473,12 +1477,12 @@ async function showCache($: EngineInterface) {
   if (minutes === 0 && was !== null && was > 0) await handoffWhenCold($)
 }
 
-/** Auto handoff on cold: the cache has just run out on a chat big enough for the cold band, with no turn running. Quick
+/** Auto handoff on cold: the cache has just run out on a chat big enough to be worth it, with no turn running. Quick
  * is written by Haiku from the transcript (the cache is cold), and the new chat waits: nobody may be at the keyboard. */
 async function handoffWhenCold($: EngineInterface) {
   if (config.coldHandoff !== 'auto' || turnBusy()) return
   const tokens = lastContext?.tokens
-  if (tokens === undefined || tokens < COLD_MIN_TOKENS) return
+  if (tokens === undefined || tokens < COLD_HANDOFF_MIN_TOKENS) return
   await startHandoff($, false, 'confirm')
 }
 

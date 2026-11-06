@@ -916,7 +916,13 @@ describe('cache countdown', () => {
     expect(submitted).toEqual([])
   })
 
-  test('Auto handoff on cold leaves a chat too small for the cold band alone', { options: { coldHandoff: 'auto' } } as never, async ($, on) => {
+  test('Auto handoff on cold hands off a chat below the cold band but past its own floor', { options: { coldHandoff: 'auto' } } as never, async ($, on) => {
+    const { ran, submitted } = await goesCold($, on, 173_000)
+    expect(ran.filter(c => c === 'clear')).toHaveLength(1)
+    expect(submitted.some(t => t.includes('Goal: from Haiku'))).toBe(true)
+  })
+
+  test('Auto handoff on cold leaves a chat too small to be worth it alone', { options: { coldHandoff: 'auto' } } as never, async ($, on) => {
     const { ran, submitted } = await goesCold($, on, 100_000)
     expect(ran).not.toContain('clear')
     expect(submitted).toEqual([])
