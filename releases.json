@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.72.2",
+    "date": "2026-11-06",
+    "note": "The settings command closes the panel if it is already open, and the effort row takes keys 1-5",
+    "detail": [
+      "Running /effortless settings again closes the panel instead of leaving it stuck open.",
+      "The effort row is keyboard-driveable: 1 = low through 5 = max."
+    ],
+    "public": true
+  },
+  {
     "version": "1.72.0",
     "date": "2026-10-23",
     "note": "The cold-chat band fits the app's new frame, and waits for 400k tokens",
